@@ -1,0 +1,310 @@
+---
+title: "RFM_DASHBOARD"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: fill
+---
+
+
+```{r setup, include= FALSE, message=FALSE,warning=FALSE}
+library(tidyverse)
+library(stats)
+library(factoextra)
+library(knitr)
+```
+
+
+```{r orders, include=FALSE}
+orders=read.csv("C:/Users/ali/Desktop/Projet data science/CUSTOMERS SEGMENTATION/orders.csv")
+knitr::kable ( head(orders), caption = "Les ordres")
+```
+
+```{r eval_variable_delete, include=FALSE}
+orders=orders %>% mutate(eval_set=NULL)
+```
+
+```{r products,include=FALSE}
+products=read.csv("C:/Users/ali/Desktop/Projet data science/CUSTOMERS SEGMENTATION/products.csv")
+knitr::kable ( head(products), caption = "Les produits")
+```
+
+```{r Order_products_prior, include=FALSE}
+order_products_prior=read.csv("C:/Users/ali/Desktop/Projet data science/CUSTOMERS SEGMENTATION/order_products__prior.csv")
+knitr::kable(head(order_products_prior),caption="Oreder products prior")
+```
+
+```{r Order_products_train, include=FALSE}
+order_products_train=read.csv("C:/Users/ali/Desktop/Projet data science/CUSTOMERS SEGMENTATION/order_products__train.csv")
+knitr::kable(head(order_products_train),caption="Oreder products train")
+```
+
+```{r aisles, include=FALSE}
+aisles=read.csv("C:/Users/ali/Desktop/Projet data science/CUSTOMERS SEGMENTATION/aisles.csv")
+knitr::kable ( head(aisles), caption = "Aisles")
+```
+
+```{r departments, include=FALSE}
+departments=read.csv("C:/Users/ali/Desktop/Projet data science/CUSTOMERS SEGMENTATION/departments.csv")
+knitr::kable ( head(departments), caption = "Les départements")
+```
+
+```{r Frequency, message=FALSE,warning=FALSE, include=FALSE}
+Frequency = orders %>% 
+  group_by(user_id) %>% 
+  summarize(Frequency=n())
+knitr::kable ( head(Frequency), caption = "Total number of orders per customer(Frequency)")
+```
+
+```{r Recency, message=FALSE,warning=FALSE, include=FALSE}
+Recency=orders %>% group_by(user_id) %>% 
+  summarise(Recency=as.integer(mean(days_since_prior_order,na.rm = TRUE))) 
+knitr::kable ( head(Recency), caption = "Average lag(Recency)")
+```
+
+```{r order_products, include=FALSE}
+order_products=rbind(order_products_prior,order_products_train)%>%
+  arrange(order_id)
+knitr::kable ( head(order_products), caption = "order_products")
+```
+
+```{r Monetory, message=FALSE,warning=FALSE, include=FALSE}
+Monetory=orders %>% inner_join(order_products,"order_id") %>% 
+  select(user_id,product_id) %>% 
+  group_by(user_id) %>% 
+  summarize(Monetory=n())
+knitr::kable ( head(Monetory), caption = "Average size of orders per costumer(Monetory)")
+
+```
+
+# RFM Variables   
+
+## Column 1   
+
+### RFM_data_set   
+
+```{r RFM_data_set, message=FALSE,warning=FALSE,echo = FALSE}
+RFM_data_set=Frequency%>%
+  inner_join(Recency,"user_id") %>%
+  inner_join(Monetory,"user_id")
+knitr::kable ( head(RFM_data_set), caption = "RFM_data_set")
+  
+```
+
+### Frequency_ distribution   
+
+```{r Frequency_distibution, message=FALSE,warning=FALSE, echo= FALSE}
+Frequency %>% ggplot()+
+  geom_bar(aes(x=Frequency),fill="brown")
+```
+
+## Column 2   
+
+### Recency distribution   
+
+```{r Recency_distribution, message=FALSE,warning=FALSE, echo= FALSE}
+ggplot(data=Recency)+
+  geom_bar(mapping=aes(x=Recency),fill="brown")
+```
+
+### Monetory distribution   
+
+```{r Monetory_distribution, message=FALSE,warning=FALSE, echo= FALSE}
+ggplot(data=Monetory)+
+  geom_bar(mapping=aes(x=Monetory),fill="brown")
+```
+
+# Correlations between RFM variables  
+
+
+
+## Column 1      
+
+### Frequency/Recency   
+
+
+```{r Frequency/Recency visualisation, message=FALSE,warning=FALSE, echo= FALSE}
+RFM_data_set %>% 
+  ggplot()+
+  geom_smooth(mapping = aes(x = Recency,y=Frequency))
+```
+
+### Monetory/Recency :
+
+```{r Monetory/Recency visualisation, message=FALSE,warning=FALSE, echo= FALSE}
+RFM_data_set %>% 
+  ggplot()+
+  geom_smooth(mapping = aes(x = Recency,y=Monetory))
+```
+
+## Monetory/Frequency  
+
+
+```{r Monetory/Frequency visualisation, message=FALSE,warning=FALSE, echo= FALSE}
+RFM_data_set %>% 
+  ggplot()+
+  geom_smooth(mapping = aes(x = Frequency,y=Monetory))
+```
+
+
+# K means  
+
+## Col 1   
+
+### Scree plot
+
+```{r scree plot, message=FALSE,warning=FALSE}
+RFM_data_set_without_id=RFM_data_set %>% select(-user_id)
+ratio_ss <- data.frame(cluster = seq(from = 1, to = 9, by = 1)) 
+for (k in 1:9) {
+km_model <- kmeans(RFM_data_set_without_id, k, nstart = 20)
+ratio_ss$ratio[k] <- km_model$tot.withinss / km_model$totss
+}
+
+ggplot(ratio_ss, aes(cluster, ratio)) + 
+geom_line() +
+geom_point()
+```
+
+### Cluster plot   
+
+```{r k_means,message=FALSE,warning=FALSE}
+clusters=kmeans(scale(RFM_data_set_without_id),3,10,15)
+centers=clusters$centers
+fviz_cluster(clusters, data = scale(RFM_data_set_without_id),
+             geom = "point",
+             ellipse.type = "convex", 
+             ggtheme = theme_bw()
+             )
+```
+
+
+```{r affectation, include= FALSE, message=FALSE,warning=FALSE}
+affectation=clusters$cluster
+affectation=affectation %>% 
+  as_tibble() %>% 
+  mutate(user_id=1:206209,.before=1)
+names(affectation)=c("user_id","Cluster")
+knitr::kable(head(affectation),caption = "Affectations")
+```
+
+
+
+## Col 2   
+
+### Cluster plot   
+
+```{r labeled_RFM_data_set, message=FALSE,warning=FALSE}
+RFM_data_set_labeled=RFM_data_set %>% 
+  inner_join(affectation,by="user_id")
+```
+
+```{r Clusters sizes, message=FALSE,warning=FALSE}
+RFM_data_set_labeled %>% 
+  ggplot()+
+  geom_bar(mapping = aes(x=Cluster,y=..prop..),fill="blue")
+```
+
+```{r centers, include= FALSE, message=FALSE,warning=FALSE}
+centers = centers %>%
+  as_tibble() %>% 
+  mutate(clusters=c("cluster1","cluster2","cluster3"),.before=1)
+knitr::kable(centers,caption = "Centers")
+```
+
+```{r centers_longer, include= FALSE, message=FALSE,warning=FALSE}
+centers_longer=centers %>%
+  pivot_longer(-clusters,names_to="Variable",values_to="Value") 
+knitr::kable(centers_longer,caption = "centers_longer")
+```
+
+### Cluster visualisation   
+
+
+```{r clusters_visualisation_2, message=FALSE,warning=FALSE}
+ggplot(data = centers_longer, aes(x = Variable, y = Value)) + 
+    geom_point(aes(color=clusters))+
+    geom_smooth(aes(group=clusters,color=clusters))+
+    facet_wrap(~clusters,nrow = 3)
+```
+
+
+# More insights  
+
+## Polular days and hours of orders   
+
+### Popular days of orders   
+
+```{r popular days of orders, message=FALSE,warning=FALSE}
+orders %>% ggplot() + 
+  geom_bar(mapping=aes(x = order_dow, fill=order_dow),fill="green")
+```
+
+
+### Popular hours of orders   
+
+```{r popular hours of orders, message=FALSE,warning=FALSE}
+orders %>% ggplot() + 
+  geom_bar(mapping=aes(x = order_hour_of_day, fill=order_hour_of_day),fill="orange")
+```
+
+
+## Top products   
+
+```{r demanded products,include=FALSE, message=FALSE,warning=FALSE}
+demanded_products=order_products %>% 
+  inner_join(products,by="product_id") %>% 
+  inner_join(aisles,by="aisle_id") %>% 
+  inner_join(departments,by="department_id") %>% 
+  select(c("order_id","product_name","aisle","department"))
+```
+
+
+```{r top products,include=FALSE, message=FALSE,warning=FALSE}
+top_products=demanded_products %>% 
+  group_by(product_name) %>% 
+  summarize(n=n()) %>% 
+  arrange(desc(n)) %>% 
+  head(10)
+```
+
+```{r top_products_Word_Cloud, message=FALSE,warning=FALSE}
+wordcloud(words = top_products$product_name, freq = top_products$n, min.freq = 1,
+          max.words=30, random.order=FALSE, rot.per=0.35, 
+          colors=brewer.pal(8, "Dark2"))
+```
+
+
+# top aisles and departments  
+
+## Top aisles   
+
+```{r top_aisles,include=FALSE, message=FALSE,warning=FALSE}
+top_aisles=demanded_products %>% 
+  group_by(aisle) %>% 
+  summarize(n=n()) %>% 
+  arrange(desc(n)) %>% 
+  head(30)
+```
+
+```{r top_aisles_Word_Cloud, message=FALSE,warning=FALSE}
+wordcloud(words = top_aisles$aisle, freq = top_aisles$n, min.freq = 1,
+          max.words=30, random.order=FALSE, rot.per=0.35, 
+          colors=brewer.pal(8, "Dark2"))
+```
+
+## Top departments   
+
+```{r top_departments, message=FALSE,warning=FALSE}
+top_departments=demanded_products %>% 
+  group_by(department) %>% 
+  summarize(n=n()) %>% 
+  arrange(desc(n)) %>% 
+  head(10)
+```
+
+```{r top_departments_bar_chart, message=FALSE,warning=FALSE}
+demanded_products %>% 
+  ggplot()+
+  geom_bar(mapping = aes(x=department,fill=department))
+```

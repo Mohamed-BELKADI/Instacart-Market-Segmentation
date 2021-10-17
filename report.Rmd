@@ -1,0 +1,509 @@
+---
+title: "Instacart Market Basket Analysis"
+author: "BELKADI Mohamed and ESSADIK Ahmed"
+date: "23/01/2021"
+output:
+  html_document:
+    toc: true
+    theme: united
+---
+
+#INTRODUCTION :
+##C'est quoi Instacart ?
+
+  Instacart est une entreprise américaine spécialisée dans la livraison de produits alimentaires, via des livreurs indépendants. À l'image d'Uber pour le transport de personne, Instacart via une application mobile permet de mettre en relation des clients souhaitant se faire livrer leur course dans des magasins ayant pignon sur rue, avec des livreurs. Instacart a été fondé en 2012 par Apoorva Mehta1, à San Francisco.
+
+  Le 16 octobre 2018, Instacart officialise une nouvelle levée de fonds d'environ 600 millions de dollars en plus des 350 millions déjà récoltés en début d'année 2018.
+
+  À la différence du géant de la livraison, Amazon, et des autres entreprises de ce secteur, Instacart ne dispose pas d'entrepôt : l'entreprise sert uniquement d'intermédiaire. WIKIPEDIA  
+
+##But de cette analyse :
+     prédire quels articles un client commanderait à nouveau à l'avenir.
+
+##Market segmentation :
+     En termes simples, la segmentation des clients consiste à trier les clients en groupes en fonction de leur comportement réel ou probable afin qu'une entreprise puisse s'engager plus efficacement avec eux. Par exemple, une entreprise pourrait offrir un type de promotion ou de réduction à ses clients les plus fidèles et une incitation différente aux clients nouveaux ou peu fréquents.  
+
+##RFM Analysis :  
+    RFM stands for Recency, Frequency, and Monetary value, each corresponding to some key customer trait. These RFM metrics are important indicators of a customer’s behavior because frequency and monetary value affects a customer’s lifetime value, and recency affects retention, a measure of engagement.  
+
+![RFM Metrics](C:/Users/ali/Downloads/RFM.png)
+
+##K Means :
+    Le partitionnement en k-moyennes (ou k-means en anglais) est une méthode de partitionnement de données et un problème d'optimisation combinatoire. Étant donnés des points et un entier k, le problème est de diviser les points en k groupes, souvent appelés clusters, de façon à minimiser une certaine fonction. On considère la distance d'un point à la moyenne des points de son cluster ; la fonction à minimiser est la somme des carrés de ces distances.  
+
+![RFM Metrics](C:/Users/ali/Downloads/k-means.png)
+
+##Setup :
+
+```{r setup, message=FALSE,warning=FALSE}
+library(tidyverse)
+library(stats)
+library(factoextra)
+library(knitr)
+```
+
+
+#DATA :
+
+   On dispose pour ce projet de six tables de données extraites du site **Kaggle.com**, L'ensemble de ces tables de données contient des informations sur plus de 3 millions d'ordres via Instacart sous la forme de fichiers ".csv".  
+Voici Une structure qui montre le contenu de chaque table:
+![data structure](C:/Users/ali/Downloads/data structure.png)
+
+
+*Oreders :* 
+Voici un aperçu des six premiers lignes du table :
+
+```{r orders}
+orders=read.csv("C:/Users/ali/Desktop/Projet data science/CUSTOMERS SEGMENTATION/orders.csv")
+knitr::kable ( head(orders), caption = "Les ordres")
+```
+
+```{r eval_variable_delete, include=FALSE}
+orders=orders %>% mutate(eval_set=NULL)
+```
+
+
+La table est composée de `r nrow(orders)` ordres, et `r ncol(orders)` variables. Voila une résumé de l'ensemble des variables :
+
+```{r orders_glimpse}
+glimpse(orders)
+```
+
+**Orders_id :** L'identifiant de l'ordre effectué par les clients  
+**User_id :** L'identifiant de client ayant effectué l'ordre 
+**Order_number :** Le nombre de l'ordre effectué par le client
+**Order_dow :** le jour de la semaine, lorsque le client a effectué l'ordre
+**Order_hour_of_day :** l'heure du jour, lorsque le client a effectué l'ordre
+**days_since_prior_order :** le nombre de jours depuis le dernier ordre
+
+--------------------------------------------------------------------
+
+**Products :**
+Voici les six premiers lignes de la table :
+
+```{r products}
+products=read.csv("C:/Users/ali/Desktop/Projet data science/CUSTOMERS SEGMENTATION/products.csv")
+knitr::kable ( head(products), caption = "Les produits")
+```
+
+La table des produits contient `r nrow(products)` produits,et `r ncol(products)` variables, voici une visualisation de l'ensemble des variables:
+
+```{r products_glimpse}
+glimpse(products)
+```
+
+**Product_id :** l'identifiant du produit acheté par les clients
+**Product_name :** le nom du produit acheté par les clients
+**Aisle_id :** l'identifiant de l'allée du produit
+**department_id :** l'identifieant du département du produit
+
+--------------------------------------------------------------------
+**Order products prior et Order products train :**
+Voici un extrait de la table Order_products_prior:
+```{r Order_products_prior}
+order_products_prior=read.csv("C:/Users/ali/Desktop/Projet data science/CUSTOMERS SEGMENTATION/order_products__prior.csv")
+knitr::kable(head(order_products_prior),caption="Oreder products prior")
+```
+Cette table contient `r nrow(order_products_prior)` lignes et `r ncol(order_products_prior)`variables. voici un résumé des variable de cette table :
+
+```{r order_products_prior_glimpse}
+glimpse(order_products_prior)
+```
+
+
+Voici un extrait de la table order_products_train :
+
+```{r Order_products_train}
+order_products_train=read.csv("C:/Users/ali/Desktop/Projet data science/CUSTOMERS SEGMENTATION/order_products__train.csv")
+knitr::kable(head(order_products_train),caption="Oreder products train")
+```
+Cette table contient `r nrow(order_products_train)` lignes et `r ncol(order_products_train)`. Voici un résumé des variables de cette table :
+
+```{r order_products_train_glimpse}
+glimpse(order_products_train)
+```
+
+**order_id :** L'identifiant de l'ordre effectué par le client
+**product_id :** L'identifiant du produit acheté par le client
+**add_to_cart_order :** Séquence de la commande passée dans le panier
+**reordered :** Indique si les produits sont réapprovisionnés ou non
+
+--------------------------------------------------------------------
+
+**Aisles :**
+
+Voici les premiers six lignes de la table :
+```{r aisles}
+aisles=read.csv("C:/Users/ali/Desktop/Projet data science/CUSTOMERS SEGMENTATION/aisles.csv")
+knitr::kable ( head(aisles), caption = "Aisles")
+```
+
+Cette table contient `r nrow(aisles)` allées, et `r ncol(aisles)` variables, voici un apperçu des variables:
+
+```{r aisles_glimpse}
+glimpse(aisles)
+```
+**aisle_id :** L'identifiant de l'allée
+**aisle :** Le nom de l'allée 
+
+--------------------------------------------------------------------
+**Departments :**
+Un apperçu des six premiers lignes :
+```{r departments}
+departments=read.csv("C:/Users/ali/Desktop/Projet data science/CUSTOMERS SEGMENTATION/departments.csv")
+knitr::kable ( head(departments), caption = "Les départements")
+```
+
+La table dispose de `r nrow(departments)` departements et `ncol(departments)` variables, voici un apperçu des variables :
+
+```{r departments_glimpse}
+glimpse(departments)
+```
+**department_id :** L'identifiant du département
+**department :** Le nom du département
+
+
+#RFM Data_Set :
+  On a choisi de travailler par la méthode RFM définie précédement:
+Commençant tout d'abord par le calcul de trois paramètres Recency, Frequency et Monetory : 
+
+##Total number of orders per customer(Frequency) :   
+  Le paramètre **Frequency** mesure le nombre total des ordres effectué par chaque client de *Instacart* :
+
+
+```{r Frequency, message=FALSE,warning=FALSE, cache=TRUE, dependson=orders}
+Frequency = orders %>% 
+  group_by(user_id) %>% 
+  summarize(Frequency=n())
+knitr::kable ( head(Frequency), caption = "Total number of orders per customer(Frequency)")
+```
+
+##Average lag(Recency):
+    Le paramètre **Recency** mesure la durée moyenne qui sépare deux ordres sucessifs effectués par chaque client:
+    
+```{r Recency, message=FALSE,warning=FALSE, cache=TRUE, dependson=orders}
+Recency=orders %>% group_by(user_id) %>% 
+  summarise(Recency=as.integer(mean(days_since_prior_order,na.rm = TRUE))) 
+knitr::kable ( head(Recency), caption = "Average lag(Recency)")
+```
+
+##Average size of orders per costumer(Monetory) :
+    Le facteur **Monetory** indique le nombre des produits demandés pour chaque ordre d'un client.
+    Avant de calculer ce facteur, et pour avoir une vision globale sur tout les produits, on rassemble les deux tables *order_products__prior* et *order_products__train* sous une table appelée *order_products* :
+
+```{r order_products}
+order_products=rbind(order_products_prior,order_products_train)%>%
+  arrange(order_id)
+knitr::kable ( head(order_products), caption = "order_products")
+```
+
+   On applique la méthode **inner_join** entre les deux tables *orders* et *order_products* par la variable *order_id* afin d'avoir une liaison entre les deux variales *user_id* et *product_id*:
+
+```{r Monetory, message=FALSE,warning=FALSE}
+Monetory=orders %>% inner_join(order_products,"order_id") %>% 
+  select(user_id,product_id) %>% 
+  group_by(user_id) %>% 
+  summarize(Monetory=n())
+knitr::kable ( head(Monetory), caption = "Average size of orders per costumer(Monetory)")
+
+```
+
+##Final_data_set :
+```{r RFM_data_set, message=FALSE,warning=FALSE}
+RFM_data_set=Frequency%>%
+  inner_join(Recency,"user_id") %>%
+  inner_join(Monetory,"user_id")
+knitr::kable ( head(RFM_data_set), caption = "RFM_data_set")
+  
+```
+##Distribution des variables RFM :
+
+**Distribution de la variable Frequency :**
+
+```{r Frequency_distibution, message=FALSE,warning=FALSE, cache=TRUE, dependson=Frequency}
+Frequency %>% ggplot()+
+  geom_bar(aes(x=Frequency),fill="brown")
+```
+
+
+**Distribution de la variable Recency :**
+
+```{r Recency_distribution, message=FALSE,warning=FALSE, cache=TRUE, dependson=Recency}
+ggplot(data=Recency)+
+  geom_bar(mapping=aes(x=Recency),fill="brown")
+```
+**Distribution de la variable Monetory :**
+
+```{r Monetory_distribution, message=FALSE,warning=FALSE,cache=TRUE, dependson=Monetory}
+ggplot(data=Monetory)+
+  geom_bar(mapping=aes(x=Monetory),fill="brown")
+```
+
+   On observe que les deux variables *Frequency* et *Monetory* disposent d'un fort biais (skew) positif, tandis que la variable *Recency* et bien dispersé relativement. On utilisera prochainement la méthode **scale()** afin de centrer et réduire les variables RFM avant d'appliquer le k-means.
+
+##Visualisation des corrélations entre les paramètres RFM :    
+
+Commençons par la visualisation de la variable **Frequency** en fonction de la variable **Recency**, en utilisant la méthode *geom_smooth* : 
+
+
+```{r Frequency/Recency visualisation, message=FALSE,warning=FALSE, cache=TRUE, dependson=RFM_data_set}
+RFM_data_set %>% 
+  ggplot()+
+  geom_smooth(mapping = aes(x = Recency,y=Frequency))
+```
+   On remarque bien que la variable **Frequency** diminue lorsque la variable **Recency** augmente, ceci est évident, puisque un client qui se retarde d'effectuer ses ordres possède moins d'ordres en total.
+   
+   
+   Passons maintenant à la visualisation de la variable **Monetory** en fonction de la variable **Recency**, enfaite, c'est un résultat de la visualisation précédente; long recency, implique petite fréquence, et donc petite Monetory :
+
+```{r Monetory/Recency visualisation, message=FALSE,warning=FALSE, cache=TRUE, dependson=RFM_data_set}
+RFM_data_set %>% 
+  ggplot()+
+  geom_smooth(mapping = aes(x = Recency,y=Monetory))
+```
+
+   Terminons par la visualisation de la variable **Frequency** en fonction de la variable **Monetory** :
+
+```{r Monetory/Frequency visualisation, message=FALSE,warning=FALSE, cache=TRUE, dependson=RFM_data_set}
+RFM_data_set %>% 
+  ggplot()+
+  geom_smooth(mapping = aes(x = Frequency,y=Monetory))
+```
+
+   Nous constatons l'existance d'une relation presque linéaire entre les deux variables **Frequency** et **Monetory**
+
+
+**Conclusion :**
+    Un long retard entre les ordres d'un client montre son manque de confiance pour les services de *Instacart*, et donc peu d'ordres pour ce client (et peu de produits bien sûr).
+    
+
+#K-means :
+
+   Avant d'entamer l'application de l'algorithme k-means, on doit d'abord choisir le nombre de clusters à considérer, pour cela, nous allons créer un scree plot, qui compile le ratio entre le total within cluster sum of squares et le total sum of square. Il s’agit ici de repérer visuellement le « coude » du graphique, qui se situera au nombre idéal de clusters.
+
+```{r scree plot, message=FALSE,warning=FALSE}
+RFM_data_set_without_id=RFM_data_set %>% select(-user_id)
+ratio_ss <- data.frame(cluster = seq(from = 1, to = 9, by = 1)) 
+for (k in 1:9) {
+km_model <- kmeans(RFM_data_set_without_id, k, nstart = 20)
+ratio_ss$ratio[k] <- km_model$tot.withinss / km_model$totss
+}
+
+ggplot(ratio_ss, aes(cluster, ratio)) + 
+geom_line() +
+geom_point()
+```
+
+   Nous voyons donc que le nombre de clusters idéal pour notre jeu de données se situe en 3. on fixe donc k=3 et on applique l'algorithme *k-means* sur la table **RFM_data_set**, Voici le graphe illustrant les clusters:
+   N.B: la méthode scale() est utilisée pour centrer et réduire les variables RFM.
+
+```{r k_means,message=FALSE,warning=FALSE}
+clusters=kmeans(scale(RFM_data_set_without_id),3,10,15)
+centers=clusters$centers
+fviz_cluster(clusters, data = scale(RFM_data_set_without_id),
+             geom = "point",
+             ellipse.type = "convex", 
+             ggtheme = theme_bw()
+             )
+```
+
+  On a obtenu 3 clusters de clients, Le premier cluster comprend 97,112 clients (47.09%), le deuxième contient 86,758 clients (42.06%), et le dernier rassemble 22,359 clients (10.84%). Voici les résultats détaillés de k-means :
+
+```{r clusters}
+clusters
+```
+
+   Voici un extrait d'une table qui montre l'affectation de chaque user :
+
+```{r affectation, message=FALSE,warning=FALSE}
+affectation=clusters$cluster
+affectation=affectation %>% 
+  as_tibble() %>% 
+  mutate(user_id=1:206209,.before=1)
+names(affectation)=c("user_id","Cluster")
+knitr::kable(head(affectation),caption = "Affectations")
+```
+
+   On ajoute cette affectation à notre *RFM_data_set*, voici un extrait du tableau résultant :
+
+```{r labeled_RFM_data_set, message=FALSE,warning=FALSE}
+RFM_data_set_labeled=RFM_data_set %>% 
+  inner_join(affectation,by="user_id")
+knitr::kable(head(RFM_data_set_labeled), caption = "RFM_data_set_labeled")
+```
+   On visualise la taille de chaque cluster :
+   
+```{r Clusters sizes, message=FALSE,warning=FALSE}
+RFM_data_set_labeled %>% 
+  ggplot()+
+  geom_bar(mapping = aes(x=Cluster,y=..prop..),fill="brown")
+```
+   
+   
+   On peut extraire le tableau qui montre les caractériqtiques de chaque cluster, on déplace les ordres des clusters (1,2,3) par les noms (cluster1, cluster2, cluster3) :
+```{r centers, message=FALSE,warning=FALSE}
+centers = centers %>%
+  as_tibble() %>% 
+  mutate(clusters=c("cluster1","cluster2","cluster3"),.before=1)
+knitr::kable(centers,caption = "Centers")
+```
+
+   On vise à visualiser chaque cluster par les trois paramètres RFM, pour ce faire, on produit une nouvelle table à partir de la table **centers**, en utilisant la méthode *pivot_longer*:
+
+```{r centers_longer, message=FALSE,warning=FALSE}
+centers_longer=centers %>%
+  pivot_longer(-clusters,names_to="Variable",values_to="Value") 
+knitr::kable(centers_longer,caption = "centers_longer")
+```
+
+  On visualise maintenant la table précédente en utilisant les méthodes *ggplot()*, *geom_point()*,*geom_smooth* afin d'avoir une idée claire pour chaque cluster :
+
+```{r clusters_visualisation_1, message=FALSE,warning=FALSE}
+ggplot(data = centers_longer, aes(x = Variable, y = Value, color=clusters)) + 
+    geom_point()+
+    geom_smooth(aes(group=clusters))
+```
+
+On sépare les trois graphes par la méthode *facet_wrap()*:
+
+```{r clusters_visualisation_2, message=FALSE,warning=FALSE}
+ggplot(data = centers_longer, aes(x = Variable, y = Value)) + 
+    geom_point(aes(color=clusters))+
+    geom_smooth(aes(group=clusters,color=clusters))+
+    facet_wrap(~clusters,nrow = 3)
+```
+
+#K means Results:
+**Qu'est ce qu'on peut dire à propos des 3 clusters ?**
+**Cluster1 :** Ce groupe de clients dispose d'un *Recency* très faible, de plus, Ils utilisent beaucoup *Instacart* et passent beaucoup de commandes (*Frequency* élevé) de tailles importantes (*Monetory* élevé), Ce sont les clients préférés et les plus fidèles. Le marketing pour ces clients pourrait se concentrer sur le maintien de leur fidélité tout en les encourageant à passer des commandes qui génèrent plus de revenus pour l'entreprise (que cela signifie plus d'articles, des articles plus chers).
+**Cluster2 :** Cet cluster rassemble les clients les moins fidèles, Ils ont essayé *Instacart*, mais ils ne l’utilisent pas souvent et n’achètent pas beaucoup d’articles, C'est le segment où nous avons le plus de marge de progression, Une stratégie spéciale de Marketing est nécessaire pour ce groupe afin d'augmenter La fréquence (*Frequency*) et la tailles des ordres (*Monetory*), et diminuer le *Recency* de leurs achats.
+**Cluster3 :** Ce sont les clients neutres, Ils n'utilisent pas Instacart aussi souvent, mais lorsqu'ils le font, ils passent des commandes plus ou moins importants, Il faut les encourager à passer plus d'ordres via des stratégies de Marketing pertinentes.
+
+
+# More insights :
+
+##Les jours les plus populaires des commandes des utilisateurs :
+
+```{r popular days of orders, message=FALSE,warning=FALSE}
+orders %>% ggplot() + 
+  geom_bar(mapping=aes(x = order_dow, fill=order_dow),fill="green")
+```
+ 
+  les jours les plus populaires des commandes des utilisateurs sont 0 et 1, on dispose pas d'une définition de ces numéros de jours, mais ces deux jours sont souvent *Dimanche* et *Lundi*.
+  
+##les heures populaires du jour quand Instacart reçoit les ordres des clients:
+
+```{r popular hours of orders, message=FALSE,warning=FALSE}
+orders %>% ggplot() + 
+  geom_bar(mapping=aes(x = order_hour_of_day, fill=order_hour_of_day),fill="orange")
+```
+
+   On constate qu'Instacart n'a pas beaucoup de livraison le matin et tard le soir, La plupart des ordres sont passées en heures d'intervalle de temps [9,16].
+   
+   D'après les résultats des deux graphes précédents, on peut dire que la plupart des ordres sont passés pendant les deux jours Dimanche et Lundi entre 9h du matin et 16h du soir.
+   
+##Les produits les plus demandés :
+  On établie une nouvelle table des données nommée *demanded products* qui rassemble les ordres id, les noms des produits, les allées et les départements des produits demendés:
+
+```{r demanded products, message=FALSE,warning=FALSE}
+demanded_products=order_products %>% 
+  inner_join(products,by="product_id") %>% 
+  inner_join(aisles,by="aisle_id") %>% 
+  inner_join(departments,by="department_id") %>% 
+  select(c("order_id","product_name","aisle","department"))
+knitr::kable(head(demanded_products),caption = "les produits demandés")
+```
+ 
+ classant maintenant les produits afin de savoir les plus et les moins demandés:  
+
+```{r top products, message=FALSE,warning=FALSE}
+top_products=demanded_products %>% 
+  group_by(product_name) %>% 
+  summarize(n=n()) %>% 
+  arrange(desc(n)) %>% 
+  head(30)
+knitr::kable(top_products,caption = "Top products")
+```
+
+
+```{r top_products_Word_Cloud, message=FALSE,warning=FALSE}
+wordcloud(words = top_products$product_name, freq = top_products$n, min.freq = 1,
+          max.words=30, random.order=FALSE, rot.per=0.35, 
+          colors=brewer.pal(8, "Dark2"))
+```
+
+
+
+```{r worst_products, message=FALSE,warning=FALSE}
+worst_products=demanded_products %>% 
+  group_by(product_name) %>% 
+  summarize(n=n()) %>% 
+  arrange(desc(n)) %>% 
+  tail(30)
+knitr::kable(worst_products,caption = "worst products")
+```
+
+
+  Nous remarquons que plus de 490000 clients ajoute les bananes à leurs commandes. Ainsi,les fruits et les légumes sont les produits les plus demandés.
+  
+##Les allées des produits les plus demandés :
+```{r top_aisles, message=FALSE,warning=FALSE}
+top_aisles=demanded_products %>% 
+  group_by(aisle) %>% 
+  summarize(n=n()) %>% 
+  arrange(desc(n)) %>% 
+  head(30)
+knitr::kable(top_aisles,caption = "Top aisles")
+```
+```{r top_aisles_Word_Cloud, message=FALSE,warning=FALSE}
+wordcloud(words = top_aisles$aisle, freq = top_aisles$n, min.freq = 1,
+          max.words=30, random.order=FALSE, rot.per=0.35, 
+          colors=brewer.pal(8, "Dark2"))
+```
+
+```{r worst_aisles, message=FALSE,warning=FALSE}
+worst_aisles=demanded_products %>% 
+  group_by(aisle) %>% 
+  summarize(n=n()) %>% 
+  arrange(desc(n)) %>% 
+  tail(30)
+knitr::kable(worst_aisles,caption = "Worst aisles")
+```
+
+
+Les allées les plus importantes sont ceux des fruits, des légumes et des produits laitiers, tandis que ceux des juices et ses produits de la beauté sont les moins importantes. 
+
+##Les département des produits les plus demandés:
+
+```{r top_departments, message=FALSE,warning=FALSE}
+top_departments=demanded_products %>% 
+  group_by(department) %>% 
+  summarize(n=n()) %>% 
+  arrange(desc(n)) %>% 
+  head(10)
+knitr::kable(top_departments,caption = "top departmentss")
+```
+
+```{r top_departments_bar_chart, message=FALSE,warning=FALSE}
+demanded_products %>% 
+  ggplot()+
+  geom_bar(mapping = aes(x=department,fill=department))
+```
+
+```{r worst_departments, message=FALSE,warning=FALSE}
+worst_departments=demanded_products %>% 
+  group_by(department) %>% 
+  summarize(n=n()) %>% 
+  arrange(desc(n)) %>% 
+  tail(3)
+knitr::kable(worst_departments,caption = "Worst departments")
+```
+
+   Nous observons que les meilleurs départments sont : Produce, Dairy Eggs, Snacks, Beverages, and Frozen.
+
+
+
+# CONCLUSION :
+
+  Aucune entreprise ne peut diviser son marché stratégiquement sans réaliser de segmentation marketing adéquate, sans segmentation, les entreprises ciblent ses clients, de façon trop vague, sans savoir comment y adresser. Enfaite la segmentation du marché permet aux entreprises de changer leurs stratégies afin d’augmenter le profit, et de cibler un nouveau segment, pour mieux atteindre une clientèle, par suite, sa compétitivité dans ce segment s’accroît. De plus, une communication efficace est garantie quand on connaît bien le marché cible.
+
